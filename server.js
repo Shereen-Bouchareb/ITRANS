@@ -1,51 +1,40 @@
 const WebSocket = require('ws');
+const express = require('express');
+const app = express();
+const db = require('./modules/load_database'); // Adjust the path as needed
 
-const app = require('./app');
-// instance express pour gerer les requette http .
-const db = require ('./modules/load_database'); // le fichier JS(not json)
+// Create HTTP server and associate it with the WebSocket server
+const server = app.listen(8080, () => {
+  console.log('Server listening on port 8080');
+});
 
-// creation du serveur webSocket et l'associe au serveur http dans le meme port 
+const wss = new WebSocket.Server({ server });
 
-const wss = new WebSocket.Server( {server : app.listen(8080) } );
+wss.on('connection', (socket) => {
+  console.log('Client connected');
 
+  socket.on('message', (data) => {
+    try {
+      const { latitude, longitude } = JSON.parse(data);
+      console.log("latitude = " + latitude , "longitude=" + longitude ) ; 
+      const station = db.findStation(latitude, longitude);
 
-let mp3PlayerClient = null;
-
-
-// middlewares
-wss.on('connection' , (Socket) => { 
-  Socket.on('message' , (data)=> {
-// data with type JSON String 
-const { latitude , longitude} = JSON.parse(data);
-
-const station = db.findStation(latitude , longitude);
-
-if (station){
-  if (mp3PlayerClient){
-mp3PlayerClient.send(station.name);
-  }
-
-}else{
-// station == undefined (null)
-console.log("station is not founded ");
-}
-
-  });
-
-  if (Socket.upgradeReq.url === '/mp3Player') {
-    mp3PlayerClient = Socket;
-  }
-
-  // Handle mp3Player client disconnection
-  Socket.on('close', () => {
-    if (Socket === mp3PlayerClient) {
-      mp3PlayerClient = null;
+      if (station) {
+        console.log("Station is detected");
+        socket.send(JSON.stringify({ status: 'success', message: 'Station detected', station }));
+      } else {
+        console.log("Station is not found");
+        socket.send(JSON.stringify({ status: 'error', message: 'Station not found' }));
+      }
+    } catch (error) {
+      console.error('Error processing message:', error);
+      socket.send(JSON.stringify({ status: 'error', message: 'Invalid data format' }));
     }
   });
 
- });
+  socket.on('close', () => {
+    console.log('Client disconnected');
+  });
+});
 
- console.log('Serveur en écoute sur le port 8080');
-
-
-
+module.exports = app;
